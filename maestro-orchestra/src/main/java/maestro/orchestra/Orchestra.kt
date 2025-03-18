@@ -928,6 +928,8 @@ class Orchestra(
 
     private fun assertVisualCommand(command: AssertVisualCommand): Boolean {
         val baseline = command.baseline + ".png"
+        val fileName = command.baseline.split('/').last()
+        val directory = baseline.replace("/$fileName", "")
 
         val actual = screenshotsDir
             ?.let { File(it, baseline) }
@@ -968,7 +970,8 @@ class Orchestra(
                     ImageIO.read(expected),
                     ImageIO.read(regressionFailedFile),
                     ImageIO.read(actual),
-                ), "failed_visual_regression")
+                ), "failed/$fileName"
+            )
 
             throw MaestroException.AssertionFailure(
                 message = "Comparison error: ${command.description()} - threshold not met, current: ${100 - comparisonState.differencePercent}",

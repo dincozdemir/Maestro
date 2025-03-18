@@ -22,6 +22,8 @@ object ImageConcatenate {
             img.createGraphics().drawImage(image, currentImageWidth, 0, null)
             currentImageWidth += image.width
         }
-        ImageIO.write(img, "png", File("$resultFilePath.png"))
+        val outputFile = File("$resultFilePath.png");
+        outputFile.getParentFile().mkdirs();
+        ImageIO.write(img, "png", outputFile)
     }
 }
