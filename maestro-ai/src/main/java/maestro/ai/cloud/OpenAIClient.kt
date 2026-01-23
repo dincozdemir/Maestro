@@ -8,6 +8,7 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
+import maestro.DeviceInfo
 import maestro.ai.AI
 import maestro.ai.openai.OpenAI
 import org.slf4j.LoggerFactory
@@ -27,6 +28,18 @@ class OpenAIClient {
 
     private val extractTextSchema by lazy {
         readSchema("extractText")
+    }
+
+    private val extractPointSchema by lazy {
+        readSchema("extractPoint")
+    }
+
+    private val toggleImage by lazy {
+        val fileName = "toggle.jpg"
+        val resourceStream = OpenAIClient::class.java.getResourceAsStream(fileName)
+            ?: throw IllegalStateException("Could not find $fileName in the same package as OpenAIClient")
+
+        resourceStream.use { it.readBytes() }
     }
 
     /**
@@ -98,16 +111,20 @@ class OpenAIClient {
         aiClient: AI,
         query: String,
         screen: ByteArray,
+        deviceInfo: DeviceInfo,
     ): ExtractPointWithAiResponse {
+
         val prompt = buildString {
-            append("What are the center coordinates (percentage based on image width and height) of the ui element described in this query: $query")
+            append("given two images; first is a screenshot of user interface and the second is a toggle image")
+            append("What are the center coordinates (percentage) of the UI component in the attached image on the screen")
 
             append(
                 """
                 |
                 |RULES:
                 |* Provide response as a valid JSON, with structure described below.
-                |* Each resulting coordinate should be smaller than 100
+                |* Each resulting coordinate x and y must be smaller than 100
+                |* If x or y is greater than 100 round to only two digits.
                 |* Resulting coordinates should be integers and have % character at the end. eg: 10%,20%
                 """.trimMargin("|")
             )
@@ -118,9 +135,9 @@ class OpenAIClient {
                 |* You must provide result as a valid JSON object, matching this structure:
                 |
                 |  {
-                |      "text": "x%,y%"
+                |      "element": "x%,y%"
                 |  }
-                |
+                |x and y must both smaller than 100
                 |DO NOT output any other information in the JSON object.
                 """.trimMargin("|")
             )
@@ -131,8 +148,8 @@ class OpenAIClient {
             model = aiClient.defaultModel,
             maxTokens = 4096,
             imageDetail = "high",
-            images = listOf(screen),
-            jsonSchema = json.parseToJsonElement(extractTextSchema).jsonObject,
+            images = listOf(screen, toggleImage),
+            jsonSchema = json.parseToJsonElement(extractPointSchema).jsonObject,
         )
         logger.info("AI response: ${aiResponse.response}")
         val response = json.decodeFromString<ExtractPointWithAiResponse>(aiResponse.response)

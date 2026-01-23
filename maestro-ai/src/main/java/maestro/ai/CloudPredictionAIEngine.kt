@@ -1,5 +1,6 @@
 package maestro.ai
 
+import maestro.DeviceInfo
 import maestro.ai.cloud.Defect
 import maestro.ai.Prediction
 
@@ -16,7 +17,7 @@ class CloudAIPredictionEngine() : AIPredictionEngine {
         return Prediction.extractText(aiClient, query, screen)
     }
 
-    override suspend fun extractPoint(screen: ByteArray, aiClient: AI, query: String): String {
-        return Prediction.extractPoint(aiClient, query, screen)
+    override suspend fun extractPoint(screen: ByteArray, aiClient: AI, query: String, deviceInfo: DeviceInfo): String {
+        return Prediction.extractPoint(aiClient, query, screen, deviceInfo)
     }
 }

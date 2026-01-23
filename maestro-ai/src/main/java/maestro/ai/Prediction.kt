@@ -1,5 +1,6 @@
 package maestro.ai
 
+import maestro.DeviceInfo
 import maestro.ai.cloud.Defect
 import maestro.ai.cloud.OpenAIClient
 
@@ -45,10 +46,11 @@ object Prediction {
         aiClient: AI?,
         query: String,
         screen: ByteArray,
+        deviceInfo: DeviceInfo,
     ): String {
         if(aiClient !== null){
-            val response = openApi.extractPointWithAi(aiClient, query, screen)
-            return response.text
+            val response = openApi.extractPointWithAi(aiClient, query, screen, deviceInfo)
+            return response.element
         }
         return ""
     }

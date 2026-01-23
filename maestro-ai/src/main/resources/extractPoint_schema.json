@@ -5,11 +5,11 @@
   "schema": {
     "type": "object",
     "required": [
-      "text"
+      "element"
     ],
     "additionalProperties": false,
     "properties": {
-      "text": {
+      "element": {
         "type": "string"
       }
     }

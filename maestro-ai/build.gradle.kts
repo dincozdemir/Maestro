@@ -24,12 +24,27 @@ tasks.named<Jar>("jar") {
     }
 }
 
+sourceSets {
+    getByName("main") {
+        resources {
+            srcDirs("src/main/resources", "src/main/java")
+            include("**/*.json")
+            include("**/*.jpg")
+        }
+    }
+}
+
+tasks.withType<ProcessResources> {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 dependencies {
     api(libs.kotlin.result)
     api(libs.square.okio)
     api(libs.square.okio.jvm)
     api(libs.square.okhttp)
 
+    api(libs.kotlinx.coroutines.core)
     api(libs.logging.sl4j)
     api(libs.logging.api)
     api(libs.logging.layout.template)
@@ -42,6 +57,7 @@ dependencies {
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.clikt)
+    implementation(project(":maestro-client"))
 
     testImplementation(libs.junit.jupiter.api)
     testRuntimeOnly(libs.junit.jupiter.engine)

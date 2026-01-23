@@ -585,6 +585,7 @@ class Orchestra(
             screen = imageData.copy().readByteArray(),
             aiClient = ai,
             query = command.query,
+            deviceInfo = maestro.driver.deviceInfo(),
         )
 
         updateMetadata(

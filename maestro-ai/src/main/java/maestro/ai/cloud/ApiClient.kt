@@ -45,7 +45,7 @@ data class ExtractTextWithAiResponse(
 
 @Serializable
 data class ExtractPointWithAiResponse(
-    val text: String,
+    val element: String,
 )
 
 class ApiClient {
