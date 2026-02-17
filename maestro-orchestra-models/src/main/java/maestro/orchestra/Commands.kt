@@ -759,6 +759,20 @@ data class AssertScreenshotCommand(
             return "Assert screenshot matches $path (threshold: $thresholdPercentage%)$cropInfo"
         }
 
+    override fun yamlString(): String {
+        val yamlString = buildString {
+            appendLine(
+                """
+                |assertScreenshot:
+                |  path: $path
+                |  thresholdPercentage: $thresholdPercentage
+                |  optional: $optional
+                """
+            )
+        }
+        return yamlString
+    }
+
     override fun evaluateScripts(jsEngine: JsEngine): Command {
         return copy(
             path = path.evaluateScripts(jsEngine),

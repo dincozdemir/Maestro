@@ -25,21 +25,9 @@ import com.github.romankh3.image.comparison.ImageComparison
 import com.github.romankh3.image.comparison.model.ImageComparisonState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import maestro.Driver
-import maestro.ElementFilter
-import maestro.Filters
-import com.github.romankh3.image.comparison.ImageComparison
-import com.github.romankh3.image.comparison.model.ImageComparisonState
 import io.grpc.Status
 import maestro.*
 import maestro.Filters.asFilter
-import maestro.FindElementResult
-import maestro.Maestro
-import maestro.MaestroException
-import maestro.Point
-import maestro.ScreenRecording
-import maestro.UiElement
-import maestro.ViewHierarchy
 import maestro.ai.AI
 import maestro.ai.AI.Companion.AI_KEY_ENV_VAR
 import maestro.ai.cloud.Defect
@@ -79,12 +67,10 @@ import java.lang.Long.max
 import java.nio.file.Path
 import java.nio.file.Files
 import java.nio.file.Paths
-import java.util.logging.Filter
 import javax.imageio.ImageIO
 import kotlin.coroutines.coroutineContext
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import javax.imageio.ImageIO
 
 // TODO(bartkepacia): Use this in onCommandGeneratedOutput.
 //  Caveat:
