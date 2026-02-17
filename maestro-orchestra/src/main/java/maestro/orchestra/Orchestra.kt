@@ -349,8 +349,42 @@ class Orchestra(
 
     private fun initAI(): AI {
         logger.info("[Orchestra] Initializing AI")
-        val apiKey = System.getenv(AI_KEY_ENV_VAR)
-        val modelName: String? = System.getenv(AI.AI_MODEL_ENV_VAR)
+        val primaryKey = System.getenv(AI_KEY_ENV_VAR)
+        val primaryModel: String? = System.getenv(AI.AI_MODEL_ENV_VAR)
+        val altKey: String? = System.getenv("MAESTRO_CLI_AI_KEY_ALT")
+        val altModel: String? = System.getenv("MAESTRO_CLI_AI_MODEL_ALT")
+
+        val alternationEnabled = !altKey.isNullOrBlank() && !altModel.isNullOrBlank()
+
+        val apiKey: String
+        val modelName: String?
+        var providerLabel = "primary"
+
+        if (alternationEnabled) {
+            val stateDir = File(System.getProperty("user.home"), ".maestro/ai-metrics")
+            stateDir.mkdirs()
+            val stateFile = File(stateDir, ".last_provider")
+            val lastProvider = try { stateFile.readText().trim() } catch (_: Exception) { "primary" }
+
+            if (lastProvider == "primary" || lastProvider.isBlank()) {
+                // Use alternate this run
+                apiKey = altKey!!
+                modelName = altModel
+                providerLabel = "alternate"
+                stateFile.writeText("alternate")
+            } else {
+                // Use primary this run
+                apiKey = primaryKey
+                modelName = primaryModel
+                providerLabel = "primary"
+                stateFile.writeText("primary")
+            }
+            logger.info("[Orchestra] AI provider: ${modelName ?: "gpt-4.1"} (alternation: $providerLabel)")
+        } else {
+            apiKey = primaryKey
+            modelName = primaryModel
+            logger.info("[Orchestra] AI provider: ${modelName ?: "gpt-4.1"} (no alternation)")
+        }
 
         return if (modelName == null) OpenAI(apiKey = apiKey)
         else if (modelName.startsWith("gpt-")) OpenAI(apiKey = apiKey, defaultModel = modelName)
@@ -490,14 +524,18 @@ class Orchestra(
     ): Boolean {
 
         val metadata = getMetadata(maestroCommand)
+        val metrics = mutableListOf<AICallMetric>()
 
         val imageData = Buffer()
         maestro.takeScreenshot(imageData, compressed = false)
 
-        val defects = AIPredictionEngine.findDefects(
+        val aiResponse = AIPredictionEngine.findDefects(
             screen = imageData.copy().readByteArray(),
             aiClient = ai,
         )
+        val defects = aiResponse.result.defects
+        metrics.add(AICallMetric(model = aiResponse.model, durationMs = aiResponse.durationMs, success = defects.isEmpty()))
+        logger.info("[AI_METRICS] model=${aiResponse.model} durationMs=${aiResponse.durationMs} success=${defects.isEmpty()}")
 
         if (defects.isNotEmpty()) {
             onCommandGeneratedOutput(command, defects, imageData)
@@ -506,7 +544,7 @@ class Orchestra(
             val reasoning =
                 "Found ${defects.size} possible $word:\n${defects.joinToString("\n") { "- ${it.reasoning}" }}"
 
-            updateMetadata(maestroCommand, metadata.copy(aiReasoning = reasoning))
+            updateMetadata(maestroCommand, metadata.copy(aiReasoning = reasoning, aiMetrics = metrics))
 
 
             throw MaestroException.AssertionFailure(
@@ -519,26 +557,31 @@ class Orchestra(
             )
         }
 
+        updateMetadata(maestroCommand, metadata.copy(aiMetrics = metrics))
         return false
     }
 
     private suspend fun assertWithAICommand(command: AssertWithAICommand, maestroCommand: MaestroCommand): Boolean {
 
         val metadata = getMetadata(maestroCommand)
+        val metrics = mutableListOf<AICallMetric>()
 
         val imageData = Buffer()
         maestro.takeScreenshot(imageData, compressed = false)
-        val defect = AIPredictionEngine.performAssertion(
+        val aiResponse = AIPredictionEngine.performAssertion(
             screen = imageData.copy().readByteArray(),
             aiClient = ai,
             assertion = command.assertion,
         )
+        val defect = aiResponse.result.defects.firstOrNull()
+        metrics.add(AICallMetric(model = aiResponse.model, durationMs = aiResponse.durationMs, success = defect == null))
+        logger.info("[AI_METRICS] model=${aiResponse.model} durationMs=${aiResponse.durationMs} success=${defect == null}")
 
         if (defect != null) {
             onCommandGeneratedOutput(command, listOf(defect), imageData)
 
             val reasoning = "Assertion \"${command.assertion}\" failed:\n${defect.reasoning}"
-            updateMetadata(maestroCommand, metadata.copy(aiReasoning = reasoning))
+            updateMetadata(maestroCommand, metadata.copy(aiReasoning = reasoning, aiMetrics = metrics))
 
             throw MaestroException.AssertionFailure(
                 message = """
@@ -548,6 +591,7 @@ class Orchestra(
                 debugMessage = "AI-powered assertion failed. Check the UI and screenshots in debug artifacts to verify if there are actual visual issues that were missed or if the AI detection needs adjustment.")
         }
 
+        updateMetadata(maestroCommand, metadata.copy(aiMetrics = metrics))
         return false
     }
 
@@ -557,18 +601,23 @@ class Orchestra(
     ): Boolean {
 
         val metadata = getMetadata(maestroCommand)
+        val metrics = mutableListOf<AICallMetric>()
 
         val imageData = Buffer()
         maestro.takeScreenshot(imageData, compressed = false)
-        val text = AIPredictionEngine.extractText(
+        val aiResponse = AIPredictionEngine.extractText(
             screen = imageData.copy().readByteArray(),
             aiClient = ai,
             query = command.query,
         )
+        val text = aiResponse.result.text
+        metrics.add(AICallMetric(model = aiResponse.model, durationMs = aiResponse.durationMs, success = text.isNotBlank()))
+        logger.info("[AI_METRICS] model=${aiResponse.model} durationMs=${aiResponse.durationMs} success=${text.isNotBlank()}")
 
         updateMetadata(
             maestroCommand, metadata.copy(
-                aiReasoning = "Query: \"${command.query}\"\nExtracted text: $text"
+                aiReasoning = "Query: \"${command.query}\"\nExtracted text: $text",
+                aiMetrics = metrics,
             )
         )
         jsEngine.putEnv(command.outputVariable, text)
@@ -583,6 +632,7 @@ class Orchestra(
 
         val metadata = getMetadata(maestroCommand)
         val reasoningLog = StringBuilder()
+        val metrics = mutableListOf<AICallMetric>()
         reasoningLog.appendLine("Query: \"${command.query}\"")
 
         // Take screenshot
@@ -597,6 +647,7 @@ class Orchestra(
         // --- PASS 1: Initial extraction with chain-of-thought + hierarchy ---
         var bestPoint = "50%,50%"
         reasoningLog.appendLine("\n--- Pass 1: Initial extraction ---")
+        var pass1Result: maestro.ai.cloud.ExtractPointWithReasoningResponse? = null
         val pass1Response = try {
             AIPredictionEngine.extractPointWithReasoning(
                 screen = screenshotBytes,
@@ -611,11 +662,14 @@ class Orchestra(
         }
 
         if (pass1Response != null) {
-            bestPoint = pass1Response.text
-            reasoningLog.appendLine("Reasoning: ${pass1Response.reasoning}")
-            reasoningLog.appendLine("Description: ${pass1Response.description}")
-            reasoningLog.appendLine("Bounding region: ${pass1Response.boundingRegion}")
-            reasoningLog.appendLine("Point: ${pass1Response.text}")
+            pass1Result = pass1Response.result
+            bestPoint = pass1Result.text
+            metrics.add(AICallMetric(model = pass1Response.model, durationMs = pass1Response.durationMs, success = true))
+            logger.info("[AI_METRICS] model=${pass1Response.model} durationMs=${pass1Response.durationMs} success=true")
+            reasoningLog.appendLine("Reasoning: ${pass1Result.reasoning}")
+            reasoningLog.appendLine("Description: ${pass1Result.description}")
+            reasoningLog.appendLine("Bounding region: ${pass1Result.boundingRegion}")
+            reasoningLog.appendLine("Point: ${pass1Result.text}")
         }
 
         val (pass1X, pass1Y) = parsePercentagePoint(bestPoint)
@@ -626,7 +680,7 @@ class Orchestra(
             reasoningLog.appendLine("\n--- Pass 2: Crop refinement ---")
             try {
                 val cropResult = ImageCropUtil.cropAroundPoint(screenshotBytes, pass1X, pass1Y, cropPercent = 30)
-                val contextDesc = "Cropped 30% region around Pass 1 point (${pass1X}%,${pass1Y}%). Element: ${pass1Response?.description ?: command.query}"
+                val contextDesc = "Cropped 30% region around Pass 1 point (${pass1X}%,${pass1Y}%). Element: ${pass1Result?.description ?: command.query}"
 
                 val pass2Response = AIPredictionEngine.extractPointRefined(
                     croppedScreen = cropResult.croppedPng,
@@ -636,11 +690,14 @@ class Orchestra(
                 )
 
                 if (pass2Response != null) {
-                    val (croppedX, croppedY) = parsePercentagePoint(pass2Response.text)
+                    val pass2Result = pass2Response.result
+                    metrics.add(AICallMetric(model = pass2Response.model, durationMs = pass2Response.durationMs, success = true))
+                    logger.info("[AI_METRICS] model=${pass2Response.model} durationMs=${pass2Response.durationMs} success=true")
+                    val (croppedX, croppedY) = parsePercentagePoint(pass2Result.text)
                     val (mappedX, mappedY) = ImageCropUtil.mapCroppedPercentToOriginalPercent(croppedX, croppedY, cropResult)
                     bestPoint = "${mappedX}%,${mappedY}%"
-                    reasoningLog.appendLine("Reasoning: ${pass2Response.reasoning}")
-                    reasoningLog.appendLine("Cropped point: ${pass2Response.text} -> Mapped to full: $bestPoint")
+                    reasoningLog.appendLine("Reasoning: ${pass2Result.reasoning}")
+                    reasoningLog.appendLine("Cropped point: ${pass2Result.text} -> Mapped to full: $bestPoint")
                 }
             } catch (e: Exception) {
                 logger.warn("Pass 2 failed, using Pass 1 result", e)
@@ -663,11 +720,15 @@ class Orchestra(
                 )
 
                 if (pass3Response != null) {
-                    reasoningLog.appendLine("Is correct: ${pass3Response.isCorrect}")
-                    reasoningLog.appendLine("Reasoning: ${pass3Response.reasoning}")
-                    if (!pass3Response.isCorrect) {
-                        bestPoint = pass3Response.correctedText
-                        reasoningLog.appendLine("Corrected point: ${pass3Response.correctedText}")
+                    val pass3Result = pass3Response.result
+                    val wasCorrect = pass3Result.isCorrect
+                    metrics.add(AICallMetric(model = pass3Response.model, durationMs = pass3Response.durationMs, success = wasCorrect))
+                    logger.info("[AI_METRICS] model=${pass3Response.model} durationMs=${pass3Response.durationMs} success=$wasCorrect")
+                    reasoningLog.appendLine("Is correct: ${pass3Result.isCorrect}")
+                    reasoningLog.appendLine("Reasoning: ${pass3Result.reasoning}")
+                    if (!pass3Result.isCorrect) {
+                        bestPoint = pass3Result.correctedText
+                        reasoningLog.appendLine("Corrected point: ${pass3Result.correctedText}")
                     }
                 }
             } catch (e: Exception) {
@@ -680,7 +741,8 @@ class Orchestra(
 
         updateMetadata(
             maestroCommand, metadata.copy(
-                aiReasoning = reasoningLog.toString()
+                aiReasoning = reasoningLog.toString(),
+                aiMetrics = metrics,
             )
         )
         jsEngine.putEnv(command.outputVariable, bestPoint)
@@ -705,6 +767,7 @@ class Orchestra(
 
         val metadata = getMetadata(maestroCommand)
         val reasoningLog = StringBuilder()
+        val metrics = mutableListOf<AICallMetric>()
         reasoningLog.appendLine("Image: \"${command.imagePath}\"")
 
         // Resolve image path: if relative and APP_ROOT is set, resolve against it
@@ -744,18 +807,22 @@ class Orchestra(
         }
 
         if (pass1Response != null) {
-            bestPoint = pass1Response.text
-            reasoningLog.appendLine("Reasoning: ${pass1Response.reasoning}")
-            reasoningLog.appendLine("Description: ${pass1Response.description}")
-            reasoningLog.appendLine("Bounding region: ${pass1Response.boundingRegion}")
-            reasoningLog.appendLine("Point: ${pass1Response.text}")
+            val pass1Result = pass1Response.result
+            bestPoint = pass1Result.text
+            metrics.add(AICallMetric(model = pass1Response.model, durationMs = pass1Response.durationMs, success = true))
+            logger.info("[AI_METRICS] model=${pass1Response.model} durationMs=${pass1Response.durationMs} success=true")
+            reasoningLog.appendLine("Reasoning: ${pass1Result.reasoning}")
+            reasoningLog.appendLine("Description: ${pass1Result.description}")
+            reasoningLog.appendLine("Bounding region: ${pass1Result.boundingRegion}")
+            reasoningLog.appendLine("Point: ${pass1Result.text}")
         }
 
         reasoningLog.appendLine("\nFinal point: $bestPoint")
 
         updateMetadata(
             maestroCommand, metadata.copy(
-                aiReasoning = reasoningLog.toString()
+                aiReasoning = reasoningLog.toString(),
+                aiMetrics = metrics,
             )
         )
         jsEngine.putEnv(command.outputVariable, bestPoint)
@@ -1806,13 +1873,20 @@ class Orchestra(
 
     class CommandWarned(override val message: String) : Exception(message)
 
+    data class AICallMetric(
+        val model: String,
+        val durationMs: Long,
+        val success: Boolean,
+    )
+
     data class CommandMetadata(
         val numberOfRuns: Int? = null,
         val evaluatedCommand: MaestroCommand? = null,
         val logMessages: List<String> = emptyList(),
         val insight: Insight = Insight("", Insight.Level.NONE),
         val aiReasoning: String? = null,
-        val labeledCommand: String? = null
+        val labeledCommand: String? = null,
+        val aiMetrics: List<AICallMetric> = emptyList(),
     )
 
     enum class ErrorResolution {

@@ -126,15 +126,14 @@ class DemoApp : CliktCommand() {
                 val defects = if (testCase.prompt == null) Prediction.findDefects(
                     aiClient = aiClient,
                     screen = bytes,
-                ) else {
+                ).result.defects else {
                     val result = Prediction.performAssertion(
                         aiClient = aiClient,
                         screen = bytes,
                         assertion = testCase.prompt,
                     )
 
-                    if (result == null) emptyList()
-                    else listOf(result)
+                    result.result.defects
                 }
 
                 verify(testCase, defects)

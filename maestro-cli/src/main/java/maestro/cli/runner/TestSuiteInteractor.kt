@@ -18,6 +18,8 @@ import maestro.cli.view.ErrorViewUtils
 import maestro.cli.view.TestSuiteStatusView
 import maestro.cli.view.TestSuiteStatusView.TestSuiteViewModel
 import maestro.orchestra.Orchestra
+import maestro.cli.report.AIMetricsReporter
+import maestro.cli.report.AIMetricsHtmlReporter
 import maestro.orchestra.util.Env.withEnv
 import maestro.orchestra.workspace.WorkspaceExecutionPlanner
 import maestro.orchestra.yaml.YamlCommandReader
@@ -58,6 +60,7 @@ class TestSuiteInteractor(
 
     private val logger = LoggerFactory.getLogger(TestSuiteInteractor::class.java)
     private val shardPrefix = shardIndex?.let { "[shard ${it + 1}] " }.orEmpty()
+    private val aiMetricsPerFlow = mutableMapOf<String, MutableList<Orchestra.AICallMetric>>()
 
     suspend fun runTestSuite(
         executionPlan: WorkspaceExecutionPlanner.ExecutionPlan,
@@ -157,6 +160,19 @@ class TestSuiteInteractor(
 
         // TODO(bartekpacia): Should it also be saving to debugOutputPath?
         TestDebugReporter.saveSuggestions(aiOutputs, debugOutputPath)
+
+        // Write AI metrics and generate HTML report
+        try {
+            val metricsFile = AIMetricsReporter.writeMetrics(aiMetricsPerFlow)
+            if (metricsFile != null) {
+                val reportFile = AIMetricsHtmlReporter.generateReport()
+                if (reportFile != null) {
+                    PrintUtils.message("AI metrics report: ${reportFile.absolutePath}")
+                }
+            }
+        } catch (e: Exception) {
+            logger.warn("Failed to write AI metrics report", e)
+        }
 
         return summary
     }
@@ -293,6 +309,16 @@ class TestSuiteInteractor(
                                 defects = defects,
                             )
                         )
+                    },
+                    onCommandMetadataUpdate = { _, metadata ->
+                        if (metadata.aiMetrics.isNotEmpty()) {
+                            val flowMetrics = aiMetricsPerFlow.getOrPut(flowName) { mutableListOf() }
+                            for (metric in metadata.aiMetrics) {
+                                if (!flowMetrics.contains(metric)) {
+                                    flowMetrics.add(metric)
+                                }
+                            }
+                        }
                     }
                 )
 

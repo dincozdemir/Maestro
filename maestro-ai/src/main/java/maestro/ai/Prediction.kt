@@ -1,8 +1,11 @@
 package maestro.ai
 
+import maestro.ai.cloud.AIResponse
 import maestro.ai.cloud.Defect
 import maestro.ai.cloud.ExtractPointValidationResponse
 import maestro.ai.cloud.ExtractPointWithReasoningResponse
+import maestro.ai.cloud.ExtractTextWithAiResponse
+import maestro.ai.cloud.FindDefectsResponse
 import maestro.ai.cloud.OpenAIClient
 
 object Prediction {
@@ -11,36 +14,33 @@ object Prediction {
     suspend fun findDefects(
         aiClient: AI?,
         screen: ByteArray,
-    ): List<Defect> {
+    ): AIResponse<FindDefectsResponse> {
         if(aiClient !== null){
-            val response = openApi.findDefects(aiClient, screen)
-            return response.defects
+            return openApi.findDefects(aiClient, screen)
         }
-        return listOf()
+        return AIResponse(result = FindDefectsResponse(defects = listOf()), durationMs = 0, model = "none")
     }
 
     suspend fun performAssertion(
         aiClient: AI?,
         screen: ByteArray,
         assertion: String,
-    ): Defect? {
+    ): AIResponse<FindDefectsResponse> {
         if(aiClient !== null){
-            val response = openApi.findDefects(aiClient, screen, assertion)
-            return response.defects.firstOrNull()
+            return openApi.findDefects(aiClient, screen, assertion)
         }
-        return null
+        return AIResponse(result = FindDefectsResponse(defects = listOf()), durationMs = 0, model = "none")
     }
 
     suspend fun extractText(
         aiClient: AI?,
         query: String,
         screen: ByteArray,
-    ): String {
+    ): AIResponse<ExtractTextWithAiResponse> {
         if(aiClient !== null){
-            val response = openApi.extractTextWithAi(aiClient, query, screen)
-            return response.text
+            return openApi.extractTextWithAi(aiClient, query, screen)
         }
-        return ""
+        return AIResponse(result = ExtractTextWithAiResponse(text = ""), durationMs = 0, model = "none")
     }
 
     @Deprecated("Use extractPointWithReasoning for improved accuracy", replaceWith = ReplaceWith("extractPointWithReasoning(aiClient, query, screen)"))
@@ -51,7 +51,7 @@ object Prediction {
     ): String {
         if(aiClient !== null){
             val response = openApi.extractPointWithAi(aiClient, query, screen)
-            return response.text
+            return response.result.text
         }
         return ""
     }
@@ -61,7 +61,7 @@ object Prediction {
         query: String,
         screen: ByteArray,
         viewHierarchy: String? = null,
-    ): ExtractPointWithReasoningResponse? {
+    ): AIResponse<ExtractPointWithReasoningResponse>? {
         if(aiClient !== null){
             return openApi.extractPointWithAi(aiClient, query, screen, viewHierarchy)
         }
@@ -73,7 +73,7 @@ object Prediction {
         query: String,
         croppedScreen: ByteArray,
         contextDescription: String,
-    ): ExtractPointWithReasoningResponse? {
+    ): AIResponse<ExtractPointWithReasoningResponse>? {
         if(aiClient !== null){
             return openApi.extractPointRefined(aiClient, query, croppedScreen, contextDescription)
         }
@@ -85,7 +85,7 @@ object Prediction {
         componentImage: ByteArray,
         screen: ByteArray,
         viewHierarchy: String? = null,
-    ): ExtractPointWithReasoningResponse? {
+    ): AIResponse<ExtractPointWithReasoningResponse>? {
         if(aiClient !== null){
             return openApi.extractComponentPoint(aiClient, componentImage, screen, viewHierarchy)
         }
@@ -98,7 +98,7 @@ object Prediction {
         screen: ByteArray,
         pointXPercent: Int,
         pointYPercent: Int,
-    ): ExtractPointValidationResponse? {
+    ): AIResponse<ExtractPointValidationResponse>? {
         if(aiClient !== null){
             return openApi.validatePoint(aiClient, query, screen, pointXPercent, pointYPercent)
         }
