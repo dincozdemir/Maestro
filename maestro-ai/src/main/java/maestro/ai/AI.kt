@@ -14,6 +14,7 @@ data class CompletionData(
     val maxTokens: Int,
     val images: List<String>,
     val response: String,
+    val durationMs: Long = 0,
 )
 
 abstract class AI(

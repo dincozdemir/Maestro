@@ -70,6 +70,7 @@ class Claude(
             messages = listOf(Message("user", imageContents + textContent)),
         )
 
+        val startTime = System.currentTimeMillis()
         val response = try {
             val httpResponse = httpClient.post(API_URL) {
                 contentType(ContentType.Application.Json)
@@ -96,6 +97,7 @@ class Claude(
             logger.error("Failed to complete request to Anthropic", e)
             throw e
         }
+        val durationMs = System.currentTimeMillis() - startTime
 
         return CompletionData(
             prompt = prompt,
@@ -104,6 +106,7 @@ class Claude(
             images = imagesBase64,
             model = actualModel,
             response = response.content.first().text!!,
+            durationMs = durationMs,
         )
     }
 
