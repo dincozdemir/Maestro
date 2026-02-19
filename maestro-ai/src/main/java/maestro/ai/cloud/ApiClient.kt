@@ -63,12 +63,6 @@ data class ExtractPointValidationResponse(
     val reasoning: String,
 )
 
-data class AIResponse<T>(
-    val result: T,
-    val durationMs: Long,
-    val model: String,
-)
-
 class ApiClient {
     private val baseUrl by lazy {
         System.getenv("MAESTRO_CLOUD_API_URL") ?: "https://api.copilot.mobile.dev"

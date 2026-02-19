@@ -10,7 +10,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import maestro.ai.AI
 import maestro.ai.openai.OpenAI
-import maestro.ai.cloud.AIResponse
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger(OpenAIClient::class.java)
@@ -64,7 +63,7 @@ class OpenAIClient {
         aiClient: AI,
         query: String,
         screen: ByteArray,
-    ): AIResponse<ExtractTextWithAiResponse> {
+    ): ExtractTextWithAiResponse {
         val prompt = buildString {
             append("What text on the screen matches the following query: $query")
 
@@ -100,7 +99,7 @@ class OpenAIClient {
         )
 
         val response = json.decodeFromString<ExtractTextWithAiResponse>(aiResponse.response)
-        return AIResponse(result = response, durationMs = aiResponse.durationMs, model = aiResponse.model)
+        return response
     }
 
     suspend fun extractPointWithAi(
@@ -108,7 +107,7 @@ class OpenAIClient {
         query: String,
         screen: ByteArray,
         viewHierarchy: String? = null,
-    ): AIResponse<ExtractPointWithReasoningResponse> {
+    ): ExtractPointWithReasoningResponse {
         val prompt = buildString {
             append("You are a UI element locator. Find the center coordinates of the UI element described by this query: $query")
 
@@ -160,8 +159,7 @@ class OpenAIClient {
             jsonSchema = json.parseToJsonElement(extractPointWithReasoningSchema).jsonObject,
         )
         logger.info("AI extractPointWithAi response: ${aiResponse.response}")
-        val result = json.decodeFromString<ExtractPointWithReasoningResponse>(aiResponse.response)
-        return AIResponse(result = result, durationMs = aiResponse.durationMs, model = aiResponse.model)
+        return json.decodeFromString<ExtractPointWithReasoningResponse>(aiResponse.response)
     }
 
     suspend fun extractPointRefined(
@@ -169,7 +167,7 @@ class OpenAIClient {
         query: String,
         croppedScreen: ByteArray,
         contextDescription: String,
-    ): AIResponse<ExtractPointWithReasoningResponse> {
+    ): ExtractPointWithReasoningResponse {
         val prompt = buildString {
             append("You are a UI element locator performing a REFINEMENT pass. ")
             append("You previously identified an element matching this query: $query")
@@ -215,8 +213,7 @@ class OpenAIClient {
             jsonSchema = json.parseToJsonElement(extractPointWithReasoningSchema).jsonObject,
         )
         logger.info("AI extractPointRefined response: ${aiResponse.response}")
-        val result = json.decodeFromString<ExtractPointWithReasoningResponse>(aiResponse.response)
-        return AIResponse(result = result, durationMs = aiResponse.durationMs, model = aiResponse.model)
+        return json.decodeFromString<ExtractPointWithReasoningResponse>(aiResponse.response)
     }
 
     suspend fun validatePoint(
@@ -225,7 +222,7 @@ class OpenAIClient {
         screen: ByteArray,
         pointXPercent: Int,
         pointYPercent: Int,
-    ): AIResponse<ExtractPointValidationResponse> {
+    ): ExtractPointValidationResponse {
         val prompt = buildString {
             append("You are a UI element locator performing a VALIDATION pass. ")
             append("We believe the UI element matching this query is located at coordinates ${pointXPercent}%,${pointYPercent}% on the screen: $query")
@@ -265,8 +262,7 @@ class OpenAIClient {
             jsonSchema = json.parseToJsonElement(extractPointValidationSchema).jsonObject,
         )
         logger.info("AI validatePoint response: ${aiResponse.response}")
-        val result = json.decodeFromString<ExtractPointValidationResponse>(aiResponse.response)
-        return AIResponse(result = result, durationMs = aiResponse.durationMs, model = aiResponse.model)
+        return json.decodeFromString<ExtractPointValidationResponse>(aiResponse.response)
     }
 
     suspend fun extractComponentPoint(
@@ -274,7 +270,7 @@ class OpenAIClient {
         componentImage: ByteArray,
         screen: ByteArray,
         viewHierarchy: String? = null,
-    ): AIResponse<ExtractPointWithReasoningResponse> {
+    ): ExtractPointWithReasoningResponse {
         val prompt = buildString {
             append("You are a UI element locator. The FIRST image is a reference UI component (e.g., a Storybook snapshot). The SECOND image is the current device screen.")
             append(" Find where this component appears on the screen and return the center coordinates of the matching area.")
@@ -327,15 +323,14 @@ class OpenAIClient {
             jsonSchema = json.parseToJsonElement(extractPointWithReasoningSchema).jsonObject,
         )
         logger.info("AI extractComponentPoint response: ${aiResponse.response}")
-        val result = json.decodeFromString<ExtractPointWithReasoningResponse>(aiResponse.response)
-        return AIResponse(result = result, durationMs = aiResponse.durationMs, model = aiResponse.model)
+        return json.decodeFromString<ExtractPointWithReasoningResponse>(aiResponse.response)
     }
 
     suspend fun findDefects(
         aiClient: AI,
         screen: ByteArray,
         assertion: String? = null,
-    ): AIResponse<FindDefectsResponse> {
+    ): FindDefectsResponse {
 
         if(assertion !== null) {
             return performAssertion(aiClient, screen, assertion)
@@ -409,14 +404,14 @@ class OpenAIClient {
         )
 
         val defects = json.decodeFromString<FindDefectsResponse>(aiResponse.response)
-        return AIResponse(result = defects, durationMs = aiResponse.durationMs, model = aiResponse.model)
+        return defects
     }
 
     private suspend fun performAssertion(
         aiClient: AI,
         screen: ByteArray,
         assertion: String,
-    ): AIResponse<FindDefectsResponse> {
+    ): FindDefectsResponse{
         val prompt = buildString {
 
             appendLine(
@@ -453,6 +448,6 @@ class OpenAIClient {
         )
 
         val response = json.decodeFromString<FindDefectsResponse>(aiResponse.response)
-        return AIResponse(result = response, durationMs = aiResponse.durationMs, model = aiResponse.model)
+        return response
     }
 }

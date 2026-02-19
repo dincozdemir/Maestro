@@ -76,7 +76,6 @@ class OpenAI(
             ),
         )
 
-        val startTime = System.currentTimeMillis()
         val chatCompletionResponse = try {
             val httpResponse = httpClient.post(API_URL) {
                 contentType(ContentType.Application.Json)
@@ -98,7 +97,6 @@ class OpenAI(
             logger.error("Failed to complete request to OpenAI", e)
             throw e
         }
-        val durationMs = System.currentTimeMillis() - startTime
 
         return CompletionData(
             prompt = prompt,
@@ -107,7 +105,6 @@ class OpenAI(
             images = imagesBase64,
             model = actualModel,
             response = chatCompletionResponse.choices.first().message.content,
-            durationMs = durationMs,
         )
     }
 
