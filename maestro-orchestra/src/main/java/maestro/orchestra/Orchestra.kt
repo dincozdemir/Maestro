@@ -347,7 +347,50 @@ class Orchestra(
         maestro.setAndroidChromeDevToolsEnabled(shouldEnableAndroidChromeDevTools)
     }
 
-    private fun initAI(): AI = resolveAI()
+    private fun initAI(): AI {
+        logger.info("[Orchestra] Initializing AI")
+        val primaryKey = System.getenv(AI_KEY_ENV_VAR)
+        val primaryModel: String? = System.getenv(AI.AI_MODEL_ENV_VAR)
+        val altKey: String? = System.getenv("MAESTRO_CLI_AI_KEY_ALT")
+        val altModel: String? = System.getenv("MAESTRO_CLI_AI_MODEL_ALT")
+
+        val alternationEnabled = !altKey.isNullOrBlank() && !altModel.isNullOrBlank()
+
+        val apiKey: String
+        val modelName: String?
+        var providerLabel = "primary"
+
+        if (alternationEnabled) {
+            val stateDir = File(System.getProperty("user.home"), ".maestro/ai-metrics")
+            stateDir.mkdirs()
+            val stateFile = File(stateDir, ".last_provider")
+            val lastProvider = try { stateFile.readText().trim() } catch (_: Exception) { "primary" }
+
+            if (lastProvider == "primary" || lastProvider.isBlank()) {
+                // Use alternate this run
+                apiKey = altKey!!
+                modelName = altModel
+                providerLabel = "alternate"
+                stateFile.writeText("alternate")
+            } else {
+                // Use primary this run
+                apiKey = primaryKey
+                modelName = primaryModel
+                providerLabel = "primary"
+                stateFile.writeText("primary")
+            }
+            logger.info("[Orchestra] AI provider: ${modelName ?: "gpt-4.1"} (alternation: $providerLabel)")
+        } else {
+            apiKey = primaryKey
+            modelName = primaryModel
+            logger.info("[Orchestra] AI provider: ${modelName ?: "gpt-4.1"} (no alternation)")
+        }
+
+        return if (modelName == null) OpenAI(apiKey = apiKey)
+        else if (modelName.startsWith("gpt-")) OpenAI(apiKey = apiKey, defaultModel = modelName)
+        else if (modelName.startsWith("claude-")) Claude(apiKey = apiKey, defaultModel = modelName)
+        else throw IllegalStateException("Unsupported AI model: $modelName")
+    }
 
     /**
      * Returns true if the command mutated device state (i.e. interacted with the device), false otherwise.
@@ -1858,62 +1901,6 @@ class Orchestra(
         private const val MAX_ERASE_CHARACTERS = 50
         private const val MAX_RETRIES_ALLOWED = 3
         private val logger = LoggerFactory.getLogger(Orchestra::class.java)
-
-        @Volatile
-        private var cachedAI: AI? = null
-
-        fun resolveAI(): AI {
-            cachedAI?.let { return it }
-            synchronized(this) {
-                cachedAI?.let { return it }
-                val resolved = createAI()
-                cachedAI = resolved
-                return resolved
-            }
-        }
-
-        private fun createAI(): AI {
-            logger.info("[Orchestra] Initializing AI")
-            val primaryKey = System.getenv(AI_KEY_ENV_VAR)
-            val primaryModel: String? = System.getenv(AI.AI_MODEL_ENV_VAR)
-            val altKey: String? = System.getenv("MAESTRO_CLI_AI_KEY_ALT")
-            val altModel: String? = System.getenv("MAESTRO_CLI_AI_MODEL_ALT")
-
-            val alternationEnabled = !altKey.isNullOrBlank() && !altModel.isNullOrBlank()
-
-            val apiKey: String
-            val modelName: String?
-            var providerLabel = "primary"
-
-            if (alternationEnabled) {
-                val stateDir = File(System.getProperty("user.home"), ".maestro/ai-metrics")
-                stateDir.mkdirs()
-                val stateFile = File(stateDir, ".last_provider")
-                val lastProvider = try { stateFile.readText().trim() } catch (_: Exception) { "primary" }
-
-                if (lastProvider == "primary" || lastProvider.isBlank()) {
-                    apiKey = altKey!!
-                    modelName = altModel
-                    providerLabel = "alternate"
-                    stateFile.writeText("alternate")
-                } else {
-                    apiKey = primaryKey
-                    modelName = primaryModel
-                    providerLabel = "primary"
-                    stateFile.writeText("primary")
-                }
-                logger.info("[Orchestra] AI provider: ${modelName ?: "gpt-4.1"} (alternation: $providerLabel)")
-            } else {
-                apiKey = primaryKey
-                modelName = primaryModel
-                logger.info("[Orchestra] AI provider: ${modelName ?: "gpt-4.1"} (no alternation)")
-            }
-
-            return if (modelName == null) OpenAI(apiKey = apiKey)
-            else if (modelName.startsWith("gpt-")) OpenAI(apiKey = apiKey, defaultModel = modelName)
-            else if (modelName.startsWith("claude-")) Claude(apiKey = apiKey, defaultModel = modelName)
-            else throw IllegalStateException("Unsupported AI model: $modelName")
-        }
     }
 
     // Remove pause/resume functions that were storing/restoring engine
