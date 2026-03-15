@@ -1,0 +1,37 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Build Project') {
+            steps {
+                sh './gradlew assemble'
+            }
+        }
+
+        stage('Build Maestro CLI') {
+            steps {
+                sh './gradlew :maestro-cli:installDist -q'
+            }
+        }
+
+        stage('Package Maestro CLI') {
+            steps {
+                sh '''
+                cd maestro-cli/build/install
+                zip -r maestro.zip *
+                mv -f maestro.zip ../../../
+                '''
+            }
+        }
+
+    }
+
+    post {
+        success {
+            echo 'Build successful'
+        }
+        failure {
+            echo 'Build failed'
+        }
+    }
+}
