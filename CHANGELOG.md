@@ -1,5 +1,5 @@
 # Changelog
-Testing pr checker
+
 ## Unreleased
 
 ## 2.1.0
